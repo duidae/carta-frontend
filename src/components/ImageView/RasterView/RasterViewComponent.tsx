@@ -1,9 +1,8 @@
-import {FrameStore} from "../../../stores/FrameStore";
 import * as React from "react";
 import {observer} from "mobx-react";
-import {OverlayStore} from "../../../stores/OverlayStore";
+import {FrameStore, OverlayStore} from "stores";
 import "./RasterViewComponent.css";
-import allMaps from "../../../static/allmaps.png";
+import allMaps from "static/allmaps.png";
 
 const vertShader = require("!raw-loader!./GLSL/vert.glsl");
 const pixelShaderSimple = require("!raw-loader!./GLSL/pixel_simple.glsl");
@@ -34,6 +33,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
     private BiasUniform: WebGLUniformLocation;
     private ContrastUniform: WebGLUniformLocation;
     private GammaUniform: WebGLUniformLocation;
+    private AlphaUniform: WebGLUniformLocation;
     private ScaleTypeUniform: WebGLUniformLocation;
     private NaNColor: WebGLUniformLocation;
     private DataTexture: WebGLUniformLocation;
@@ -44,7 +44,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
     componentDidMount() {
         if (this.canvas) {
             try {
-                this.gl = this.canvas.getContext("webgl");
+                this.gl = this.canvas.getContext("webgl", {preserveDrawingBuffer: true});
                 if (!this.gl) {
                     return;
                 }
@@ -148,6 +148,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
         this.gl.uniform1f(this.BiasUniform, frame.renderConfig.bias);
         this.gl.uniform1f(this.ContrastUniform, frame.renderConfig.contrast);
         this.gl.uniform1f(this.GammaUniform, frame.renderConfig.gamma);
+        this.gl.uniform1f(this.AlphaUniform, frame.renderConfig.alpha);
     }
 
     private clearCanvas() {
@@ -254,6 +255,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
         this.BiasUniform = this.gl.getUniformLocation(shaderProgram, "uBias");
         this.ContrastUniform = this.gl.getUniformLocation(shaderProgram, "uContrast");
         this.GammaUniform = this.gl.getUniformLocation(shaderProgram, "uGamma");
+        this.AlphaUniform = this.gl.getUniformLocation(shaderProgram, "uAlpha");
         this.ScaleTypeUniform = this.gl.getUniformLocation(shaderProgram, "uScaleType");
         this.DataTexture = this.gl.getUniformLocation(shaderProgram, "uDataTexture");
         this.CmapTexture = this.gl.getUniformLocation(shaderProgram, "uCmapTexture");
@@ -268,6 +270,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
         this.gl.uniform1f(this.BiasUniform, 0);
         this.gl.uniform1f(this.ContrastUniform, 1);
         this.gl.uniform1f(this.GammaUniform, 1);
+        this.gl.uniform1f(this.AlphaUniform, 1000);
         this.gl.uniform4f(this.NaNColor, 0, 0, 1, 1);
     }
 
@@ -330,7 +333,8 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
                 contrast: frame.renderConfig.contrast,
                 bias: frame.renderConfig.bias,
                 scaling: frame.renderConfig.scaling,
-                gamma: frame.renderConfig.gamma
+                gamma: frame.renderConfig.gamma,
+                alpha: frame.renderConfig.alpha
             };
         }
         const padding = this.props.overlaySettings.padding;
@@ -342,6 +346,7 @@ export class RasterViewComponent extends React.Component<RasterViewComponentProp
             <div className={className}>
                 <canvas
                     className="raster-canvas"
+                    id="raster-canvas"
                     ref={(ref) => this.canvas = ref}
                     style={{
                         top: padding.top,

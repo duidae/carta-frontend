@@ -1,12 +1,9 @@
 import * as React from "react";
 import * as GoldenLayout from "golden-layout";
 import {observer} from "mobx-react";
-import {AppStore} from "../../../stores/AppStore";
-import {Button, Tooltip} from "@blueprintjs/core";
-import {RenderConfigComponent} from "../../RenderConfig/RenderConfigComponent";
-import {LogComponent} from "../../Log/LogComponent";
-import {WidgetConfig} from "../../../stores/FloatingWidgetStore";
-import {AnimatorComponent} from "../../Animator/AnimatorComponent";
+import {Button, ButtonGroup, Tooltip} from "@blueprintjs/core";
+import {AppStore, WidgetConfig} from "stores";
+import {AnimatorComponent, LogComponent, RenderConfigComponent, SpatialProfilerComponent, SpectralProfilerComponent} from "components";
 import "./ToolbarMenuComponent.css";
 
 @observer
@@ -18,9 +15,9 @@ export class ToolbarMenuComponent extends React.Component<{ appStore: AppStore }
             type: "react-component",
             component: widgetConfig.type,
             title: widgetConfig.title,
-            id: `${widgetConfig.id}-docked`,
+            id: widgetConfig.id,
             isClosable: widgetConfig.isCloseable,
-            props: {appStore: this.props.appStore, id: `${widgetConfig.id}-docked`, docked: true}
+            props: {appStore: this.props.appStore, id: widgetConfig.id, docked: true}
         };
 
         const widgetElement = document.getElementById(elementId);
@@ -34,51 +31,46 @@ export class ToolbarMenuComponent extends React.Component<{ appStore: AppStore }
             return;
         }
 
-        const layout = this.props.appStore.layoutSettings.layout;
+        const layout = this.props.appStore.widgetsStore.dockedLayout;
         if (layout && !this.createdDragSources) {
             this.createDragSource(layout, RenderConfigComponent.WIDGET_CONFIG, "renderConfigButton");
             this.createDragSource(layout, LogComponent.WIDGET_CONFIG, "logButton");
             this.createDragSource(layout, AnimatorComponent.WIDGET_CONFIG, "animatorButton");
+            this.createDragSource(layout, SpatialProfilerComponent.WIDGET_CONFIG, "spatialProfilerButton");
+            this.createDragSource(layout, SpectralProfilerComponent.WIDGET_CONFIG, "spectralProfilerButton");
             this.createdDragSources = true;
         }
     }
-
-    createRenderWidget = () => {
-        this.createWidget(RenderConfigComponent.WIDGET_CONFIG);
-    };
-
-    createLogWidget = () => {
-        this.createWidget(LogComponent.WIDGET_CONFIG);
-    };
-
-    createAnimatorWidget = () => {
-        this.createWidget(AnimatorComponent.WIDGET_CONFIG);
-    };
-
-    createWidget = (widgetConfig: WidgetConfig) => {
-        const floatingWidgetStore = this.props.appStore.floatingWidgetStore;
-        const existingRenderWidgets = floatingWidgetStore.widgets.filter(w => w.type === widgetConfig.type);
-        widgetConfig.id = `${widgetConfig.id}-${existingRenderWidgets.length}`;
-        floatingWidgetStore.addWidget(widgetConfig);
-    };
 
     public render() {
         let className = "toolbar-menu";
         if (this.props.appStore.darkTheme) {
             className += " bp3-dark";
         }
+
+        const commonTooltip = <span><br/><i><small>Drag to place docked widget<br/>Click to place a floating widget</small></i></span>;
         return (
-            <div className={className}>
-                <Tooltip content="Render Config Widget">
-                    <Button icon={"style"} id="renderConfigButton" minimal={true} onClick={this.createRenderWidget}/>
+            <ButtonGroup className={className}>
+                <Tooltip content={<span>Render Config Widget{commonTooltip}</span>}>
+                    <Button icon={"style"} id="renderConfigButton" onClick={this.props.appStore.widgetsStore.createFloatingRenderWidget}/>
                 </Tooltip>
-                <Tooltip content="Log Widget">
-                    <Button icon={"application"} id="logButton" minimal={true} onClick={this.createLogWidget}/>
+                <Tooltip content={<span>Log Widget{commonTooltip}</span>}>
+                    <Button icon={"application"} id="logButton" onClick={this.props.appStore.widgetsStore.createFloatingLogWidget}/>
                 </Tooltip>
-                <Tooltip content="Animator Widget">
-                    <Button icon={"layers"} id="animatorButton" minimal={true} onClick={this.createAnimatorWidget}/>
+                <Tooltip content={<span>Animator Widget{commonTooltip}</span>}>
+                    <Button icon={"video"} id="animatorButton" onClick={this.props.appStore.widgetsStore.createFloatingAnimatorWidget}/>
                 </Tooltip>
-            </div>
+                <Tooltip content={<span>Spatial Profiler{commonTooltip}</span>}>
+                    <Button icon={"pulse"} id="spatialProfilerButton" className={"profiler-button"} onClick={this.props.appStore.widgetsStore.createFloatingSpatialProfilerWidget}>
+                        xy
+                    </Button>
+                </Tooltip>
+                <Tooltip content={<span>Spectral Profiler{commonTooltip}</span>}>
+                    <Button icon={"pulse"} id="spectralProfilerButton" className={"profiler-button"} onClick={this.props.appStore.widgetsStore.createFloatingSpectralProfilerWidget}>
+                        &nbsp;z
+                    </Button>
+                </Tooltip>
+            </ButtonGroup>
         );
     }
 }

@@ -1,24 +1,17 @@
 import * as React from "react";
-import {AppStore} from "../../stores/AppStore";
-import {WidgetConfig} from "../../stores/FloatingWidgetStore";
-import {FloatingWidgetComponent} from "../FloatingWidget/FloatingWidgetComponent";
-import {RenderConfigComponent} from "../RenderConfig/RenderConfigComponent";
-import {LogComponent} from "../Log/LogComponent";
 import {observer} from "mobx-react";
-import {PlaceholderComponent} from "../Placeholder/PlaceholderComponent";
-import {ImageViewComponent} from "../ImageView/ImageViewComponent";
-import {SpatialProfilerComponent} from "../SpatialProfiler/SpatialProfilerComponent";
-import {AnimatorComponent} from "../Animator/AnimatorComponent";
+import {AnimatorComponent, FloatingWidgetComponent, ImageViewComponent, LogComponent, PlaceholderComponent, RenderConfigComponent, SpatialProfilerComponent, SpectralProfilerComponent} from "components";
+import {AppStore, WidgetConfig} from "stores";
 
 @observer
 export class FloatingWidgetManagerComponent extends React.Component<{ appStore: AppStore }> {
 
     onFloatingWidgetSelected = (widget: WidgetConfig) => {
-        this.props.appStore.floatingWidgetStore.selectWidget(widget.id);
+        this.props.appStore.widgetsStore.selectFloatingWidget(widget.id);
     };
 
     onFloatingWidgetClosed = (widget: WidgetConfig) => {
-        this.props.appStore.floatingWidgetStore.removeWidget(widget.id);
+        this.props.appStore.widgetsStore.removeFloatingWidget(widget.id);
     };
 
     private getWidgetContent(widgetConfig: WidgetConfig) {
@@ -35,6 +28,8 @@ export class FloatingWidgetManagerComponent extends React.Component<{ appStore: 
                 return <AnimatorComponent appStore={appStore} id={widgetConfig.id} docked={false}/>;
             case SpatialProfilerComponent.WIDGET_CONFIG.type:
                 return <SpatialProfilerComponent appStore={appStore} id={widgetConfig.id} docked={false}/>;
+            case SpectralProfilerComponent.WIDGET_CONFIG.type:
+                return <SpectralProfilerComponent appStore={appStore} id={widgetConfig.id} docked={false}/>;
             default:
                 return <PlaceholderComponent appStore={appStore} id={widgetConfig.id} docked={false} label={widgetConfig.title}/>;
         }
@@ -42,7 +37,7 @@ export class FloatingWidgetManagerComponent extends React.Component<{ appStore: 
 
     public render() {
         const appStore = this.props.appStore;
-        const widgetConfigs = appStore.floatingWidgetStore.widgets;
+        const widgetConfigs = appStore.widgetsStore.floatingWidgets;
 
         return (
             <div>

@@ -1,43 +1,48 @@
 import * as React from "react";
-import "./RootMenuComponent.css";
-import {Button, Menu, MenuItem, Popover, Position, Tooltip} from "@blueprintjs/core";
-import {AppStore} from "../../stores/AppStore";
+import {observable} from "mobx";
 import {observer} from "mobx-react";
-import {ConnectionStatus} from "../../services/BackendService";
+import {Alert, Menu, Popover, Position} from "@blueprintjs/core";
 import {ToolbarMenuComponent} from "./ToolbarMenu/ToolbarMenuComponent";
+import {exportImage} from "components";
+import {AppStore} from "stores";
+import {ConnectionStatus} from "services";
+import "./RootMenuComponent.css";
 
 @observer
 export class RootMenuComponent extends React.Component<{ appStore: AppStore }> {
+    @observable documentationAlertVisible: boolean;
+    private documentationAlertTimeoutHandle;
+
     render() {
         const appStore = this.props.appStore;
-
-        // Modifier string for shortcut keys. OSX/iOS use '⌘', while Windows uses 'Ctrl + '
-        const modString = "alt + ";
-        // const modString = "⌘";
+        const modString = appStore.modifierString;
 
         const fileMenu = (
             <Menu>
                 <Menu.Item
-                    text="Open cube"
+                    text="Open image"
                     label={`${modString}O`}
                     disabled={appStore.backendService.connectionStatus !== ConnectionStatus.ACTIVE}
                     onClick={() => appStore.fileBrowserStore.showFileBrowser(false)}
                 />
                 <Menu.Item
-                    text="Open cube as new frame"
-                    label={`${modString}A`}
+                    text="Append image"
+                    label={`${modString}L`}
                     disabled={appStore.backendService.connectionStatus !== ConnectionStatus.ACTIVE || !appStore.activeFrame}
                     onClick={() => appStore.fileBrowserStore.showFileBrowser(true)}
                 />
-                <Menu.Item text="Load region"/>
+                <Menu.Item text="Load region" disabled={true}/>
                 <Menu.Divider/>
-                <Menu.Item text="Export annotations" icon={"floppy-disk"}/>
-                <Menu.Item text="Export image" icon={"media"} label={`${modString}E`}/>
+                <Menu.Item
+                    text="Export image"
+                    icon={"floppy-disk"}
+                    label={`${modString}E`}
+                    disabled={appStore.backendService.connectionStatus !== ConnectionStatus.ACTIVE || !appStore.activeFrame}
+                    onClick={() => exportImage(appStore.overlayStore.padding, appStore.darkTheme, appStore.activeFrame.frameInfo.fileInfo.name)}
+                />
                 <Menu.Divider/>
-                <Menu.Item text="Preferences" icon={"cog"} label={`${modString}P`}/>
+                <Menu.Item text="Preferences" icon={"cog"} label={`${modString}P`} disabled={true}/>
                 <Menu.Item text="Connect to URL" onClick={appStore.showURLConnect}/>
-                <Menu.Divider/>
-                <Menu.Item text="Exit" icon={"log-out"} label={`${modString}Q`}/>
             </Menu>
         );
 
@@ -59,16 +64,16 @@ export class RootMenuComponent extends React.Component<{ appStore: AppStore }> {
                     <Menu.Item text="Dark" icon={"moon"} onClick={appStore.setDarkTheme}/>
                 </Menu.Item>
                 <Menu.Item text="Overlay" icon={"widget"}>
-                    <Menu.Item text="DS9 Preset"/>
-                    <Menu.Item text="CASA Preset"/>
+                    <Menu.Item text="DS9 Preset" disabled={true}/>
+                    <Menu.Item text="CASA Preset" disabled={true}/>
                     <Menu.Divider/>
-                    <Menu.Item text="Custom Preset 1"/>
-                    <Menu.Item text="Custom Preset 2"/>
+                    <Menu.Item text="Custom Preset 1" disabled={true}/>
+                    <Menu.Item text="Custom Preset 2" disabled={true}/>
                     <Menu.Divider/>
-                    <Menu.Item text="Customize..." icon={"style"} onClick={appStore.overlayStore.showOverlaySettings}/>
-                    <Menu.Item text="Save Current as Preset" icon={"floppy-disk"}/>
+                    <Menu.Item text="Customize..." icon={"settings"} onClick={appStore.overlayStore.showOverlaySettings}/>
+                    <Menu.Item text="Save Current as Preset" icon={"floppy-disk"} disabled={true}/>
                 </Menu.Item>
-                <Menu.Item text="Graphs" icon={"timeline-line-chart"}>
+                <Menu.Item text="Graphs" icon={"timeline-line-chart"} disabled={true}>
                     <Menu.Item text="DS9 Preset"/>
                     <Menu.Item text="CASA Preset"/>
                     <Menu.Divider/>
@@ -86,34 +91,29 @@ export class RootMenuComponent extends React.Component<{ appStore: AppStore }> {
                     <Menu.Item text="Next frame" icon={"chevron-forward"} disabled={layerItems.length < 2} onClick={appStore.nextFrame}/>
                 </Menu.Item>
                 }
-                <Menu.Item text="Fullscreen" icon={"fullscreen"} label={"F11"}/>
             </Menu>
         );
 
         const panelMenu = (
             <Menu>
-                <Menu.Item text="Undo layout change" icon={"undo"} disabled={!appStore.layoutSettings.hasLayoutHistory} onClick={appStore.layoutSettings.undoLayoutChange}/>
                 <Menu.Item text="Profiles" icon={"timeline-line-chart"}>
-                    <Menu.Item text="X-Profile"/>
-                    <Menu.Item text="Y-Profile"/>
-                    <Menu.Item text="Z-Profile"/>
+                    <Menu.Item text="Spatial Profiler" onClick={appStore.widgetsStore.createFloatingSpatialProfilerWidget}/>
+                    <Menu.Item text="Spectral Profiler" onClick={appStore.widgetsStore.createFloatingSpectralProfilerWidget}/>
                 </Menu.Item>
-                <Menu.Item text="Histograms" icon={"timeline-bar-chart"}>
+                <Menu.Item text="Histograms" icon={"timeline-bar-chart"} disabled={true}>
                     <Menu.Item text="Region Histogram"/>
                     <Menu.Item text="Slice Histogram"/>
                 </Menu.Item>
                 <Menu.Item text="Info Panels" icon={"info-sign"}>
-                    <Menu.Item text="Region Statistics"/>
-                    <Menu.Item text="Cursor Info"/>
-                    <Menu.Item text="Program Log"/>
-                    <Menu.Item text="Debug Info"/>
+                    <Menu.Item text="Region Statistics" disabled={true}/>
+                    <Menu.Item text="Program Log" onClick={appStore.widgetsStore.createFloatingLogWidget}/>
                 </Menu.Item>
                 <Menu.Divider/>
-                <Menu.Item text="3D Height-map" icon={"mountain"}/>
-                <Menu.Item text="Animator" icon={"video"}/>
-                <Menu.Item text="Render Config" icon={"style"}/>
+                <Menu.Item text="3D Height-map" icon={"mountain"} disabled={true}/>
+                <Menu.Item text="Animator" icon={"video"} onClick={appStore.widgetsStore.createFloatingAnimatorWidget}/>
+                <Menu.Item text="Render Config" icon={"style"} onClick={appStore.widgetsStore.createFloatingRenderWidget}/>
                 <Menu.Divider/>
-                <Menu.Item text="Presets" icon={"new-grid-item"}>
+                <Menu.Item text="Presets" icon={"new-grid-item"} disabled={true}>
                     <Menu.Item text="Image Only"/>
                     <Menu.Item text="3D with Profiles"/>
                     <Menu.Item text="Full Stokes"/>
@@ -128,10 +128,9 @@ export class RootMenuComponent extends React.Component<{ appStore: AppStore }> {
 
         const helpMenu = (
             <Menu>
-                <Menu.Item text="Getting Started" icon={"help"} label={"F1"}/>
-                <Menu.Item text="Controls and Shortcuts" icon={"info-sign"}/>
-                <Menu.Item text="Search help" icon={"search"} label={"Shift + Space"}/>
-                <Menu.Item text="About" icon={"info-sign"}/>
+                <Menu.Item text="Online Manual" icon={"help"} label={"F1"} onClick={this.handleDocumentationClicked}/>
+                <Menu.Item text="Controls and Shortcuts" label={"Shift + ?"} onClick={appStore.showHotkeyDialog}/>
+                <Menu.Item text="About" icon={"info-sign"} onClick={appStore.showAboutDialog}/>
             </Menu>
         );
 
@@ -158,16 +157,31 @@ export class RootMenuComponent extends React.Component<{ appStore: AppStore }> {
                     </Menu>
                 </Popover>
                 <ToolbarMenuComponent appStore={appStore}/>
+                <Alert isOpen={this.documentationAlertVisible} onClose={this.handleAlertDismissed} canEscapeKeyCancel={true} canOutsideClickCancel={true} confirmButtonText={"Dismiss"}>
+                    Documentation will open in a new tab. Please ensure any popup blockers are disabled.
+                </Alert>
             </div>
         );
     }
+
+    handleDocumentationClicked = () => {
+        window.open("https://cartavis.github.io/manual", "_blank", "width=1024");
+        if (process.env.REACT_APP_TARGET !== "linux" && process.env.REACT_APP_TARGET !== "darwin") {
+            this.documentationAlertVisible = true;
+            clearTimeout(this.documentationAlertTimeoutHandle);
+            this.documentationAlertTimeoutHandle = setTimeout(() => this.documentationAlertVisible = false, 10000);
+        }
+    };
+
+    handleAlertDismissed = () => {
+        this.documentationAlertVisible = false;
+    };
 
     handleFrameSelect = (fileId: number) => {
         const appStore = this.props.appStore;
         if (appStore.activeFrame && appStore.activeFrame.frameInfo.fileId === fileId) {
             return;
-        }
-        else {
+        } else {
             appStore.setActiveFrame(fileId);
         }
     };

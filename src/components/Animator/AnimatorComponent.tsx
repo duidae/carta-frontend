@@ -1,26 +1,13 @@
 import * as React from "react";
 import {observer} from "mobx-react";
-import "./AnimatorComponent.css";
-import {AppStore} from "../../stores/AppStore";
-import {WidgetConfig} from "../../stores/FloatingWidgetStore";
+import {action, observable} from "mobx";
 import {Button, ButtonGroup, FormGroup, NonIdealState, NumericInput, Radio, Slider} from "@blueprintjs/core";
 import ReactResizeDetector from "react-resize-detector";
-import {AnimationMode, AnimationState} from "../../stores/AnimatorStore";
-
-class CubeControlsComponentProps {
-    appStore: AppStore;
-    id: string;
-    docked: boolean;
-}
-
-class CubeControlsComponentState {
-    width: number;
-    height: number;
-}
+import {WidgetConfig, WidgetProps, AnimationMode, AnimationState} from "stores";
+import "./AnimatorComponent.css";
 
 @observer
-export class AnimatorComponent extends React.Component<CubeControlsComponentProps, CubeControlsComponentState> {
-
+export class AnimatorComponent extends React.Component<WidgetProps> {
     public static get WIDGET_CONFIG(): WidgetConfig {
         return {
             id: "animator",
@@ -34,13 +21,12 @@ export class AnimatorComponent extends React.Component<CubeControlsComponentProp
         };
     }
 
-    constructor(props: CubeControlsComponentProps) {
-        super(props);
-        this.state = {width: 0, height: 0};
-    }
+    @observable width: number;
+    @observable height: number;
 
-    onResize = (width: number, height: number) => {
-        this.setState({width, height});
+    @action onResize = (width: number, height: number) => {
+        this.width = width;
+        this.height = height;
     };
 
     onChannelChanged = (val: number) => {
@@ -196,8 +182,8 @@ export class AnimatorComponent extends React.Component<CubeControlsComponentProp
         const numChannels = activeFrame ? activeFrame.frameInfo.fileInfoExtended.depth : 0;
         const numStokes = activeFrame ? activeFrame.frameInfo.fileInfoExtended.stokes : 0;
 
-        const iconOnly = this.state.width < 600;
-        const hideSliders = this.state.width < 450;
+        const iconOnly = this.width < 600;
+        const hideSliders = this.width < 450;
 
         let channelSlider, stokesSlider, frameSlider;
         // Frame Control
@@ -237,8 +223,8 @@ export class AnimatorComponent extends React.Component<CubeControlsComponentProp
 
         // Channel Control
         if (numChannels > 1) {
-            const numLabels = 10;
-            const channelStep = Math.max(1, this.roundToClosestPreferredStep(numChannels / numLabels));
+            const numLabels = 5;
+            const channelStep = numChannels > 10 ? ((numChannels - 1) / (numLabels - 1)) : 1;
             channelSlider = (
                 <div className="animator-slider">
                     <Radio value={AnimationMode.CHANNEL} checked={appStore.animatorStore.animationMode === AnimationMode.CHANNEL} onChange={this.onAnimationModeChanged} label="Channel"/>
@@ -260,6 +246,7 @@ export class AnimatorComponent extends React.Component<CubeControlsComponentProp
                             min={0}
                             max={numChannels - 1}
                             labelStepSize={channelStep}
+                            labelPrecision={0}
                             onChange={this.onChannelChanged}
                             disabled={appStore.animatorStore.animationState === AnimationState.PLAYING}
                         />
@@ -344,16 +331,16 @@ export class AnimatorComponent extends React.Component<CubeControlsComponentProp
                 <NonIdealState icon={"folder-open"} title={"No file loaded"} description={"Load a file using the menu"}/>
                 }
                 {activeFrame &&
+                <div className={playbackClass}>
+                    {playbackButtons}
+                    {frameControl}
+                </div>
+                }
+                {activeFrame &&
                 <div className="animator-sliders">
                     {frameSlider}
                     {channelSlider}
                     {stokesSlider}
-                </div>
-                }
-                {activeFrame &&
-                <div className={playbackClass}>
-                    {playbackButtons}
-                    {frameControl}
                 </div>
                 }
                 <ReactResizeDetector handleWidth handleHeight onResize={this.onResize} refreshMode={"throttle"} refreshRate={33}/>

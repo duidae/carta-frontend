@@ -22,7 +22,7 @@ Module.SYS_FK4 = 1;
 Module.SYS_FK5 = 2;
 Module.SYS_GALACTIC = 3;
 Module.SYS_ICRS = 4;
-Module.SYS_J200 = 5;
+Module.SYS_J2000 = 5;
 
 Module.fonts = [
     "{size} sans-serif",
@@ -91,9 +91,12 @@ Module.setCanvas = function (canvas) {
 
 Module.set = Module.cwrap("set", "number", ["number", "string"]);
 Module.getString = Module.cwrap("getString", "string", ["number", "string"]);
+Module.dump = Module.cwrap("dump", null, ["number"]);
 Module.norm = Module.cwrap("norm", "number", ["number", "number"]);
 Module.format = Module.cwrap("format", "string", ["number", "number", "number"]);
 Module.transform = Module.cwrap("transform", "number", ["number", "number", "number", "number", "number", "number", "number"]);
+Module.getLastErrorMessage = Module.cwrap("getLastErrorMessage", "string");
+Module.clearLastErrorMessage = Module.cwrap("clearLastErrorMessage", null);
 
 Module.currentFormatStrings = [];
 

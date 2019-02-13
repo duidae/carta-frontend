@@ -1,92 +1,15 @@
-import {CARTA} from "carta-protobuf";
 import {action, computed, observable} from "mobx";
+import {CARTA} from "carta-protobuf";
 import {OverlayStore} from "./OverlayStore";
-import {Point2D} from "../models/Point2D";
-import {Frame} from "plotly.js";
-
-export enum FrameScaling {
-    LINEAR = 0,
-    LOG = 1,
-    SQRT = 2,
-    SQUARE = 3,
-    POWER = 4,
-    GAMMA = 5,
-    EXP = 6,
-    CUSTOM = 7
-}
+import {RenderConfigStore} from "./RenderConfigStore";
+import {Point2D, FrameView, SpectralInfo, ChannelInfo, CHANNEL_TYPES} from "models";
+import {clamp, frequencyStringFromVelocity, velocityStringFromFrequency} from "utilities";
 
 export class FrameInfo {
     fileId: number;
     fileInfo: CARTA.FileInfo;
     fileInfoExtended: CARTA.FileInfoExtended;
     renderMode: CARTA.RenderMode;
-}
-
-export class FrameView {
-    xMin: number;
-    xMax: number;
-    yMin: number;
-    yMax: number;
-    mip: number;
-}
-
-export class FrameRenderConfig {
-    static readonly SCALING_TYPES = new Map<FrameScaling, string>([
-        [FrameScaling.LINEAR, "Linear"],
-        [FrameScaling.LOG, "Log"],
-        [FrameScaling.SQRT, "Square root"],
-        [FrameScaling.SQUARE, "Squared"],
-        [FrameScaling.GAMMA, "Gamma"]
-    ]);
-    static readonly COLOR_MAPS_ALL = ["accent", "afmhot", "autumn", "binary", "Blues", "bone", "BrBG", "brg", "BuGn", "BuPu", "bwr", "CMRmap", "cool", "coolwarm",
-        "copper", "cubehelix", "dark2", "flag", "gist_earth", "gist_gray", "gist_heat", "gist_ncar", "gist_rainbow", "gist_stern", "gist_yarg",
-        "GnBu", "gnuplot", "gnuplot2", "gray", "greens", "greys", "hot", "hsv", "inferno", "jet", "magma", "nipy_spectral", "ocean", "oranges",
-        "OrRd", "paired", "pastel1", "pastel2", "pink", "PiYG", "plasma", "PRGn", "prism", "PuBu", "PuBuGn", "PuOr", "PuRd", "purples", "rainbow",
-        "RdBu", "RdGy", "RdPu", "RdYlBu", "RdYlGn", "reds", "seismic", "set1", "set2", "set3", "spectral", "spring", "summer", "tab10", "tab20",
-        "tab20b", "tab20c", "terrain", "viridis", "winter", "Wistia", "YlGn", "YlGnBu", "YlOrBr", "YlOrRd"];
-    @observable scaling: FrameScaling;
-    @observable colorMap: number;
-    @observable scaleMin: number;
-    @observable scaleMax: number;
-    @observable contrast: number;
-    @observable bias: number;
-    @observable gamma: number;
-
-    @computed get colorMapName() {
-        if (this.colorMap >= 0 && this.colorMap <= FrameRenderConfig.COLOR_MAPS_ALL.length - 1) {
-            return FrameRenderConfig.COLOR_MAPS_ALL[this.colorMap];
-        }
-        else {
-            return "Unknown";
-        }
-    }
-
-    @computed get scalingName() {
-        const scalingType = FrameRenderConfig.SCALING_TYPES.get(this.scaling);
-        if (scalingType) {
-            return scalingType;
-        }
-        else {
-            return "Unknown";
-        }
-    }
-
-    @action setColorMapIndex(index: number) {
-        this.colorMap = Math.max(0, Math.min(index, FrameRenderConfig.COLOR_MAPS_ALL.length - 1));
-    }
-
-    @action setColorMap(colormap: string) {
-        const index = FrameRenderConfig.COLOR_MAPS_ALL.indexOf(colormap);
-        if (index >= 0) {
-            this.setColorMapIndex(index);
-        }
-    }
-
-    @action setScaling(newScaling: FrameScaling) {
-        if (FrameRenderConfig.SCALING_TYPES.has(newScaling)) {
-            this.scaling = newScaling;
-        }
-    }
 }
 
 export class FrameStore {
@@ -97,17 +20,16 @@ export class FrameStore {
     @observable center: Point2D;
     @observable centerY: number;
     @observable zoomLevel: number;
-    @observable stokes;
-    @observable channel;
-    @observable requiredStokes;
-    @observable requiredChannel;
+    @observable stokes: number;
+    @observable channel: number;
+    @observable requiredStokes: number;
+    @observable requiredChannel: number;
     @observable currentFrameView: FrameView;
-    @observable renderConfig: FrameRenderConfig;
+    @observable currentCompressionQuality: number;
+    @observable renderConfig: RenderConfigStore;
     @observable rasterData: Float32Array;
     @observable overviewRasterData: Float32Array;
     @observable overviewRasterView: FrameView;
-    @observable channelHistogram: CARTA.Histogram;
-    @observable percentileRanks: Array<number>;
     @observable valid: boolean;
 
     private overlayStore: OverlayStore;
@@ -120,14 +42,7 @@ export class FrameStore {
         this.channel = 0;
         this.requiredStokes = 0;
         this.requiredChannel = 0;
-        this.percentileRanks = [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 25, 50, 75, 90, 95, 98, 99, 99.5, 99.9, 99.95, 99.99];
-
-        this.renderConfig = new FrameRenderConfig();
-        this.renderConfig.bias = 0;
-        this.renderConfig.contrast = 1;
-        this.renderConfig.gamma = 1;
-        this.renderConfig.scaling = FrameScaling.LINEAR;
-        this.renderConfig.colorMap = 1;
+        this.renderConfig = new RenderConfigStore();
     }
 
     @computed get requiredFrameView(): FrameView {
@@ -168,107 +83,168 @@ export class FrameStore {
         return this.overlayStore.viewHeight - this.overlayStore.padding.top - this.overlayStore.padding.bottom;
     }
 
-    @computed get percentiles(): Array<number> {
-        if (!this.percentileRanks || !this.percentileRanks || !this.channelHistogram || !this.channelHistogram.bins.length) {
-            return [];
-        }
-
-        const minVal = this.channelHistogram.firstBinCenter - this.channelHistogram.binWidth / 2.0;
-        const dx = this.channelHistogram.binWidth;
-        const vals = this.channelHistogram.bins;
-        let remainingRanks = this.percentileRanks.slice();
-        let cumulativeSum = 0;
-
-        let totalSum = 0;
-        for (let i = 0; i < vals.length; i++) {
-            totalSum += vals[i];
-        }
-
-        if (totalSum === 0) {
-            return [];
-        }
-
-        let calculatedPercentiles = [];
-
-        for (let i = 0; i < vals.length && remainingRanks.length; i++) {
-            const currentFraction = cumulativeSum / totalSum;
-            const nextFraction = (cumulativeSum + vals[i]) / totalSum;
-            let nextRank = remainingRanks[0] / 100.0;
-            while (nextFraction >= nextRank && remainingRanks.length) {
-                // Assumes a locally uniform distribution between bins
-                const portion = (nextRank - currentFraction) / (nextFraction - currentFraction);
-                calculatedPercentiles.push(minVal + dx * (i + portion));
-                // Move to next rank
-                remainingRanks.shift();
-                nextRank = remainingRanks[0] / 100.0;
-            }
-            cumulativeSum += vals[i];
-        }
-        return calculatedPercentiles;
-    }
-
-    @computed get histogramMin() {
-        if (!this.channelHistogram) {
-            return undefined;
-        }
-        return this.channelHistogram.firstBinCenter - 0.5 * this.channelHistogram.binWidth;
-    }
-
-    @computed get histogramMax() {
-        if (!this.channelHistogram) {
-            return undefined;
-        }
-        return this.channelHistogram.firstBinCenter + (this.channelHistogram.bins.length + 0.5) * this.channelHistogram.binWidth;
-    }
-
     @computed get unit() {
         if (!this.frameInfo || !this.frameInfo.fileInfoExtended || !this.frameInfo.fileInfoExtended.headerEntries) {
             return undefined;
-        }
-        else {
+        } else {
             const unitHeader = this.frameInfo.fileInfoExtended.headerEntries.filter(entry => entry.name === "BUNIT");
             if (unitHeader.length) {
                 return unitHeader[0].value;
-            }
-            else {
+            } else {
                 return undefined;
             }
         }
     }
 
-    @action setFromPercentileRank(rank: number) {
-        // Find max and min if the rank is 100%
-        if (rank === 100) {
-            this.renderConfig.scaleMin = this.histogramMin;
-            this.renderConfig.scaleMax = this.histogramMax;
-            return true;
-        }
+    @computed get beamProperties(): { x: number, y: number, angle: number } {
+        const bMajHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf("BMAJ") !== -1);
+        const bMinHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf("BMIN") !== -1);
+        const bpaHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf("BPA") !== -1);
+        const unitHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf("CUNIT1") !== -1);
+        const deltaHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf("CDELT1") !== -1);
 
-        // Look for the appropriate percentile and its complement
-        const indexRank = this.percentileRanks.findIndex(value => Math.abs(rank - value) < 1e-5);
-        const indexRankComplement = this.percentileRanks.findIndex(value => Math.abs((100 - rank) - value) < 1e-5);
-        if (indexRank === -1 || indexRankComplement === -1 || this.percentileRanks.length !== this.percentiles.length) {
-            return false;
-        }
+        if (bMajHeader && bMinHeader && bpaHeader && unitHeader && deltaHeader) {
+            let bMaj = parseFloat(bMajHeader.value);
+            let bMin = parseFloat(bMinHeader.value);
+            const bpa = parseFloat(bpaHeader.value);
+            const unit = unitHeader.value.trim();
+            const delta = parseFloat(deltaHeader.value);
 
-        this.renderConfig.scaleMin = this.percentiles[indexRankComplement];
-        this.renderConfig.scaleMax = this.percentiles[indexRank];
-        return true;
+            if (isFinite(bMaj) && bMaj > 0 && isFinite(bMin) && bMin > 0 && isFinite(bpa) && isFinite(delta) && unit === "deg" || unit === "rad") {
+                return {
+                    x: bMaj / Math.abs(delta),
+                    y: bMin / Math.abs(delta),
+                    angle: bpa
+                };
+            }
+            return null;
+        }
+        return null;
     }
 
-    @action updateChannelHistogram(histogram: CARTA.Histogram) {
-        this.channelHistogram = histogram;
-        // TODO: check if there is an existing (valid) histogram and set of percentiles, and use that by default
-        const i = 3;
-        if (this.percentiles.length > i * 2 && this.percentiles.length === this.percentileRanks.length) {
-            this.renderConfig.scaleMin = this.percentiles[i];
-            this.renderConfig.scaleMax = this.percentiles[this.percentiles.length - 1 - i];
+    @computed get referenceFrequency(): number {
+        if (!this.frameInfo || !this.frameInfo.fileInfoExtended || this.frameInfo.fileInfoExtended.depth <= 1 || !this.frameInfo.fileInfoExtended.headerEntries) {
+            return undefined;
         }
+        const restFreqHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`RESTFRQ`) !== -1);
+        if (restFreqHeader) {
+            const restFreqVal = parseFloat(restFreqHeader.value);
+            if (isFinite(restFreqVal)) {
+                return restFreqVal;
+            }
+        }
+
+        return undefined;
+    }
+
+    @computed get channelInfo(): ChannelInfo {
+        if (!this.frameInfo || !this.frameInfo.fileInfoExtended || this.frameInfo.fileInfoExtended.depth <= 1 || !this.frameInfo.fileInfoExtended.headerEntries) {
+            return undefined;
+        }
+        const N = this.frameInfo.fileInfoExtended.depth;
+        const values = new Array<number>(N);
+        const rawValues = new Array<number>(N);
+
+        // By default, we try to use the WCS information to determine channel info.
+        const channelTypeInfo = FrameStore.FindChannelType(this.frameInfo.fileInfoExtended.headerEntries);
+        if (channelTypeInfo) {
+            const refPixHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`CRPIX${channelTypeInfo.dimension}`) !== -1);
+            const refValHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`CRVAL${channelTypeInfo.dimension}`) !== -1);
+            const deltaHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`CDELT${channelTypeInfo.dimension}`) !== -1);
+            const unitHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`CUNIT${channelTypeInfo.dimension}`) !== -1);
+
+            if (refPixHeader && refValHeader && deltaHeader) {
+                const refPix = parseFloat(refPixHeader.value);
+                const refVal = parseFloat(refValHeader.value);
+                const delta = parseFloat(deltaHeader.value);
+                const unit = unitHeader ? unitHeader.value.trim() : "";
+                if (isFinite(refPix) && isFinite(refVal) && isFinite(delta)) {
+                    // Override unit if it's specified by a header
+                    if (unit.length) {
+                        channelTypeInfo.type.unit = unit;
+                    }
+
+                    let scalingFactor = 1.0;
+                    // Use km/s by default for m/s values
+                    if (channelTypeInfo.type.unit === "m/s") {
+                        scalingFactor = 1e-3;
+                        channelTypeInfo.type.unit = "km/s";
+                    }
+                    // Use GHz by default for Hz values
+                    if (channelTypeInfo.type.unit === "Hz") {
+                        scalingFactor = 1e-9;
+                        channelTypeInfo.type.unit = "GHz";
+                    }
+
+                    for (let i = 0; i < N; i++) {
+                        // FITS standard uses 1 for the first pixel
+                        const channelOffset = i + 1 - refPix;
+                        rawValues[i] = (channelOffset * delta + refVal);
+                        values[i] = rawValues[i] * scalingFactor;
+                    }
+                    return {fromWCS: true, channelType: channelTypeInfo.type, values, rawValues};
+                }
+            }
+        }
+
+        // return channels
+        for (let i = 0; i < N; i++) {
+            values[i] = i;
+            rawValues[i] = i;
+        }
+        return {fromWCS: false, channelType: {code: "", name: "Channel"}, values, rawValues};
+    }
+
+    @computed get spectralInfo(): SpectralInfo {
+        const spectralInfo: SpectralInfo = {
+            channel: this.channel,
+            channelType: {code: "", name: "Channel"},
+            spectralString: ""
+        };
+
+        if (this.frameInfo.fileInfoExtended.depth > 1) {
+            const channelInfo = this.channelInfo;
+            if (channelInfo.channelType.code) {
+                let specSysValue = "";
+                const specSysHeader = this.frameInfo.fileInfoExtended.headerEntries.find(entry => entry.name.indexOf(`SPECSYS`) !== -1);
+                if (specSysHeader && specSysHeader.value) {
+                    specSysValue = specSysHeader.value;
+                }
+                spectralInfo.channelType = channelInfo.channelType;
+                let spectralName;
+                if (specSysValue) {
+                    spectralName = `${channelInfo.channelType.name}\u00a0(${specSysValue})`;
+                } else {
+                    spectralName = channelInfo.channelType.name;
+                }
+                spectralInfo.spectralString = `${spectralName}:\u00a0${channelInfo.values[this.channel].toFixed(4)}\u00a0${channelInfo.channelType.unit}`;
+
+                const refFreq = this.referenceFrequency;
+                // Add velocity conversion
+                if (channelInfo.channelType.code === "FREQ" && isFinite(refFreq)) {
+                    const freqVal = channelInfo.rawValues[this.channel];
+                    spectralInfo.velocityString = velocityStringFromFrequency(freqVal, refFreq);
+                } else if (channelInfo.channelType.code === "VRAD") {
+                    const velocityVal = channelInfo.rawValues[this.channel];
+                    spectralInfo.freqString = frequencyStringFromVelocity(velocityVal, refFreq);
+                }
+            }
+        }
+
+        return spectralInfo;
     }
 
     @action updateFromRasterData(rasterImageData: CARTA.RasterImageData) {
         this.stokes = rasterImageData.stokes;
         this.channel = rasterImageData.channel;
+        this.currentCompressionQuality = rasterImageData.compressionQuality;
+        // if there's a valid channel histogram bundled into the message, update it
+        if (rasterImageData.channelHistogramData) {
+            // Update channel histograms
+            if (rasterImageData.channelHistogramData.regionId === -1 && rasterImageData.channelHistogramData.histograms.length) {
+                this.renderConfig.updateChannelHistogram(rasterImageData.channelHistogramData.histograms[0] as CARTA.Histogram);
+            }
+        }
 
         this.currentFrameView = {
             xMin: rasterImageData.imageBounds.xMin,
@@ -282,8 +258,7 @@ export class FrameStore {
         // Don't need to copy buffer when dealing with compressed data
         if (rasterImageData.compressionType !== CARTA.CompressionType.NONE) {
             this.rasterData = new Float32Array(rawData.buffer);
-        }
-        else {
+        } else {
             this.rasterData = new Float32Array(rawData.buffer.slice(rawData.byteOffset, rawData.byteOffset + rawData.byteLength));
         }
 
@@ -303,6 +278,12 @@ export class FrameStore {
     }
 
     @action setChannels(channel: number, stokes: number) {
+        // Automatically switch to per-channel histograms when Stokes parameter changes
+        if (this.requiredStokes !== stokes) {
+            this.renderConfig.setUseCubeHistogram(false);
+            this.renderConfig.updateCubeHistogram(null, 0);
+        }
+
         this.requiredChannel = channel;
         this.requiredStokes = stokes;
     }
@@ -316,10 +297,9 @@ export class FrameStore {
         if (wrap) {
             newChannel = (newChannel + depth) % depth;
             newStokes = (newStokes + numStokes) % numStokes;
-        }
-        else {
-            newChannel = Math.max(0, Math.min(depth - 1, newChannel));
-            newStokes = Math.max(0, Math.min(numStokes - 1, newStokes));
+        } else {
+            newChannel = clamp(newChannel, 0, depth - 1);
+            newStokes = clamp(newStokes, 0, numStokes - 1);
         }
         this.setChannels(newChannel, newStokes);
     }
@@ -343,28 +323,28 @@ export class FrameStore {
     }
 
     @action zoomToSelection(xMin: number, xMax: number, yMin: number, yMax: number) {
-
+        // TODO
     }
 
-    @action fitZoomX() {
+    @action fitZoomX = () => {
         this.zoomLevel = this.calculateZoomX();
-        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0;
-        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0;
-    }
+        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0 + 0.5;
+        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0 + 0.5;
+    };
 
-    @action fitZoomY() {
+    @action fitZoomY = () => {
         this.zoomLevel = this.calculateZoomY();
-        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0;
-        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0;
-    }
+        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0 + 0.5;
+        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0 + 0.5;
+    };
 
-    @action fitZoom() {
+    @action fitZoom = () => {
         const zoomX = this.calculateZoomX();
         const zoomY = this.calculateZoomY();
         this.zoomLevel = Math.min(zoomX, zoomY);
-        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0;
-        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0;
-    }
+        this.center.x = this.frameInfo.fileInfoExtended.width / 2.0 + 0.5;
+        this.center.y = this.frameInfo.fileInfoExtended.height / 2.0 + 0.5;
+    };
 
     private calculateZoomX() {
         const imageWidth = this.frameInfo.fileInfoExtended.width;
@@ -385,4 +365,35 @@ export class FrameStore {
         return this.renderHeight * pixelRatio / imageHeight;
     }
 
+    // Tests a list of headers for valid channel information in either 3rd or 4th axis
+    private static FindChannelType(entries: CARTA.IHeaderEntry[]) {
+        if (!entries || !entries.length) {
+            return undefined;
+        }
+
+        const typeHeader3 = entries.find(entry => entry.name.includes("CTYPE3"));
+        const typeHeader4 = entries.find(entry => entry.name.includes("CTYPE4"));
+        if (!typeHeader3 && !typeHeader4) {
+            return undefined;
+        }
+
+        // Test each header entry to see if it has a valid channel type
+        if (typeHeader3) {
+            const headerVal = typeHeader3.value.trim().toUpperCase();
+            const channelType = CHANNEL_TYPES.find(type => headerVal.indexOf(type.code) !== -1);
+            if (channelType) {
+                return {dimension: 3, type: {name: channelType.name, code: channelType.code, unit: channelType.unit}};
+            }
+        }
+
+        if (typeHeader4) {
+            const headerVal = typeHeader4.value.trim().toUpperCase();
+            const channelType = CHANNEL_TYPES.find(type => headerVal.indexOf(type.code) !== -1);
+            if (channelType) {
+                return {dimension: 4, type: {name: channelType.name, code: channelType.code, unit: channelType.unit}};
+            }
+        }
+
+        return undefined;
+    }
 }

@@ -1,12 +1,11 @@
 import * as React from "react";
 import {observer} from "mobx-react";
 import {AnchorButton, IDialogProps, Intent, NonIdealState, Pre, Tooltip, Tabs, Tab, TabId, Spinner} from "@blueprintjs/core";
-import "./FileBrowserDialogComponent.css";
 import {CARTA} from "carta-protobuf";
-import FileInfo = CARTA.FileInfo;
 import {FileListComponent} from "./FileList/FileListComponent";
-import {AppStore} from "../../../stores/AppStore";
-import {DraggableDialogComponent} from "../DraggableDialog/DraggableDialogComponent";
+import {DraggableDialogComponent} from "components/Dialogs";
+import {AppStore} from "stores";
+import "./FileBrowserDialogComponent.css";
 
 @observer
 export class FileBrowserDialogComponent extends React.Component<{ appStore: AppStore }> {
@@ -70,15 +69,15 @@ export class FileBrowserDialogComponent extends React.Component<{ appStore: AppS
                             files={fileBrowserStore.fileList}
                             selectedFile={fileBrowserStore.selectedFile}
                             selectedHDU={fileBrowserStore.selectedHDU}
-                            onFileClicked={(file: FileInfo, hdu: string) => fileBrowserStore.selectFile(file, hdu)}
-                            onFileDoubleClicked={(file: FileInfo, hdu: string) => this.loadFile(file.name, hdu)}
+                            onFileClicked={(file: CARTA.FileInfo, hdu: string) => fileBrowserStore.selectFile(file, hdu)}
+                            onFileDoubleClicked={(file: CARTA.FileInfo, hdu: string) => this.loadFile(file.name, hdu)}
                             onFolderClicked={(folder: string) => fileBrowserStore.selectFolder(folder)}
                         />
                     </div>
                     <div className="file-info-pane">
                         <Tabs id="info-tabs" onChange={this.handleTabChange} selectedTabId={fileBrowserStore.selectedTab}>
-                            <Tab id="fileInfo" title="File Information" />
-                            <Tab id="header" title="Header" />
+                            <Tab id="fileInfo" title="File Information"/>
+                            <Tab id="header" title="Header"/>
                         </Tabs>
                         {infoPanel}
                     </div>
@@ -88,7 +87,7 @@ export class FileBrowserDialogComponent extends React.Component<{ appStore: AppS
                         <AnchorButton intent={Intent.NONE} onClick={fileBrowserStore.hideFileBrowser} text="Close"/>
                         {fileBrowserStore.appendingFrame ? (
                             <Tooltip content={"Append this file as a new frame"}>
-                                <AnchorButton intent={Intent.PRIMARY} disabled={!fileBrowserStore.selectedFile || !fileBrowserStore.fileInfoResp || fileBrowserStore.loadingInfo} onClick={this.loadSelectedFile} text="Load as frame"/>
+                                <AnchorButton intent={Intent.PRIMARY} disabled={!fileBrowserStore.selectedFile || !fileBrowserStore.fileInfoResp || fileBrowserStore.loadingInfo} onClick={this.loadSelectedFile} text="Append"/>
                             </Tooltip>
                         ) : (
                             <Tooltip content={"Close any existing frames and load this file"}>

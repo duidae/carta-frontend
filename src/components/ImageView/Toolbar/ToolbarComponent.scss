@@ -1,0 +1,29 @@
+@import "../../../../node_modules/@blueprintjs/core/lib/scss/variables.scss";
+
+.image-toolbar {
+    position: absolute;
+    margin: 5px;
+    transition: opacity 400ms;
+
+    &.docked {
+        z-index: 2;
+    }
+
+    .full-zoom-button {
+        padding-left: 0;
+        padding-right: 0;
+        font-weight: bold;
+        font-size: smaller;
+        span {
+            color: $gray1;
+        }
+    }
+
+    &.bp3-dark {
+        .full-zoom-button {
+            span {
+                color: $gray5;
+            }
+        }
+    }
+}
